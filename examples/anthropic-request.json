@@ -1,0 +1,12 @@
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 1024,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello, can you help me understand the difference between TypeScript and JavaScript?"
+    }
+  ],
+  "temperature": 0.7,
+  "system": "You are a helpful programming assistant."
+}
