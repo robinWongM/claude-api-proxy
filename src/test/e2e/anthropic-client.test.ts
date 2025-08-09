@@ -53,7 +53,12 @@ describe('E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)', () => 
     expect(res.id).toBeString();
     expect(res.type).toBe('message');
     expect(res.role).toBe('assistant');
-    expect(Array.isArray(res.content)).toBeTrue();
+    expect(Array.isArray(res.content)).toBe(true);
+    expect(res.content.length).toBeGreaterThan(0);
+
+    if (res.content[0].type === 'text') {
+      expect(res.content[0].text).toInclude('hello');
+    }
   }, 30000);
 
   test('streaming messages call yields SSE stream and ends with [DONE]', async () => {
