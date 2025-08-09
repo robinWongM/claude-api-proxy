@@ -63,7 +63,7 @@ export const AnthropicMessagesResponseSchema = z.object({
   role: z.literal('assistant'),
   content: z.array(AnthropicContentBlockSchema),
   model: z.string(),
-  stop_reason: z.enum(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use']),
+  stop_reason: z.enum(['end_turn', 'max_tokens', 'stop_sequence', 'tool_use']).nullable(),
   stop_sequence: z.string().nullable(),
   usage: AnthropicUsageSchema,
 });

@@ -1,7 +1,7 @@
 import type {
   AnthropicStreamEvent,
 } from '../schemas/index.ts';
-import type { OpenAIStreamChunk, OpenAIStreamChoice } from '../types.ts';
+import type { OpenAIStreamChunk } from '../types.ts';
 
 /**
  * Converts an Anthropic streaming event to OpenAI streaming format
@@ -109,8 +109,9 @@ export function convertOpenAIStreamToAnthropic(
         role: 'assistant',
         content: [],
         model: chunk.model,
-        stop_reason: 'end_turn',
         stop_sequence: null,
+        stop_reason: null,
+        // stop_reason intentionally omitted at start per protocol; include as undefined
         usage: {
           input_tokens: 0,
           output_tokens: 0,
@@ -148,6 +149,22 @@ export function convertOpenAIStreamToAnthropic(
       index: 0,
     });
 
+    // Message delta with final stop reason mapping
+    let stop_reason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'tool_use' | undefined;
+    if (choice.finish_reason === 'stop') stop_reason = 'end_turn';
+    else if (choice.finish_reason === 'length') stop_reason = 'max_tokens';
+    events.push({
+      type: 'message_delta',
+      delta: {
+        stop_reason,
+        stop_sequence: null,
+      },
+      usage: {
+        // We don't have token counts from OpenAI streaming; provide minimal shape to satisfy clients
+        output_tokens: 0,
+      },
+    });
+
     // End of message
     events.push({
       type: 'message_stop',
@@ -179,6 +196,11 @@ export function formatSSE(data: any): string {
     return 'data: [DONE]\n\n';
   }
   return `data: ${JSON.stringify(data)}\n\n`;
+}
+
+// Anthropic-style SSE: include event header
+export function formatSSEWithEvent(eventType: string, data: any): string {
+  return `event: ${eventType}\n` + formatSSE(data);
 }
 
 /**
@@ -279,12 +301,14 @@ export function createOpenAIToAnthropicStreamTransformer() {
           if (data === '[DONE]') {
             // Send final stop events if not already sent
             if (started && !sentStop) {
-              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'content_block_stop', index: 0 })));
-              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'message_stop' })));
+              const stopContent = { type: 'content_block_stop', index: 0 } as const;
+              const stopMessage = { type: 'message_stop' } as const;
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('content_block_stop', stopContent)));
+              const delta = { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null } } as const;
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('message_delta', delta)));
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('message_stop', stopMessage)));
               sentStop = true;
             }
-
-            controller.enqueue(new TextEncoder().encode(formatSSE(null)));
             continue;
           }
 
@@ -300,7 +324,7 @@ export function createOpenAIToAnthropicStreamTransformer() {
               );
               
               for (const event of events) {
-                controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+                controller.enqueue(new TextEncoder().encode(formatSSEWithEvent(event.type, event)));
                 if (event.type === 'message_start') started = true;
                 if (event.type === 'message_stop') sentStop = true;
               }
@@ -321,11 +345,14 @@ export function createOpenAIToAnthropicStreamTransformer() {
           
           if (data === '[DONE]') {
             if (started && !sentStop) {
-              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'content_block_stop', index: 0 })));
-              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'message_stop' })));
+              const stopContent = { type: 'content_block_stop', index: 0 } as const;
+              const stopMessage = { type: 'message_stop' } as const;
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('content_block_stop', stopContent)));
+              const delta = { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null } } as const;
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('message_delta', delta)));
+              controller.enqueue(new TextEncoder().encode(formatSSEWithEvent('message_stop', stopMessage)));
               sentStop = true;
             }
-            controller.enqueue(new TextEncoder().encode(formatSSE(null)));
           } else if (data) {
             try {
               const openaiChunk: OpenAIStreamChunk = JSON.parse(data);
@@ -336,7 +363,7 @@ export function createOpenAIToAnthropicStreamTransformer() {
               );
               
               for (const event of events) {
-                controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+                controller.enqueue(new TextEncoder().encode(formatSSEWithEvent(event.type, event)));
                 if (event.type === 'message_start') started = true;
                 if (event.type === 'message_stop') sentStop = true;
               }
