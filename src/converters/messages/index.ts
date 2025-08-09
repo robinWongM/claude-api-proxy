@@ -1,12 +1,10 @@
-import { openAIToAnthropic as convertOpenAIRequest, anthropicToOpenAI as convertAnthropicRequest } from './requests.ts';
-import { anthropicToOpenAI as convertAnthropicResp, openAIToAnthropic as convertOpenAIResp } from './responses.ts';
+import { anthropicToOpenAI as convertAnthropicRequest } from "./requests.ts";
+import {
+	anthropicToOpenAI as convertAnthropicResp,
+	openAIToAnthropic as convertOpenAIResp,
+} from "./responses.ts";
 
 // moved to ./messages/{content,requests}.ts
-
-/**
- * Converts an OpenAI chat completion request to Anthropic messages format
- */
-export const convertOpenAIToAnthropic = convertOpenAIRequest;
 
 /**
  * Converts an Anthropic messages request to OpenAI chat completion format

@@ -10,7 +10,10 @@
     "start": "bun run dist/bun.js",
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "convert": "bun run src/cli.ts"
+    "convert": "bun run src/cli.ts",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
+    "format": "biome format --write src"
   },
   "keywords": ["anthropic", "openai", "api", "proxy", "converter"],
   "author": "Your Name",
@@ -22,6 +25,7 @@
     "@anthropic-ai/sdk": "^0.22.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.1.4",
     "@types/bun": "latest",
     "bun-types": "latest"
   },
