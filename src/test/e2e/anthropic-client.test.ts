@@ -10,7 +10,6 @@ import type { ProxyConfig } from '../../config.ts';
 describe('E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)', () => {
   let server: any;
   let baseUrl: string;
-  let targetReachable = false;
 
   beforeAll(async () => {
     const config: ProxyConfig = {
@@ -29,9 +28,6 @@ describe('E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)', () => 
     const app = createApp(config);
     server = Bun.serve({ hostname: config.host, port: 0, fetch: (req) => app.fetch(req) });
     baseUrl = `http://${config.host}:${server.port}`;
-
-    // Probe target to decide whether to run tests
-    targetReachable = true;
   });
 
   afterAll(() => {
