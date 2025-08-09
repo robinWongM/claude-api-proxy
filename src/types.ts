@@ -13,7 +13,6 @@ export type {
 export type {
   OpenAIMessage,
   OpenAIChatCompletionRequest,
-  OpenAIContentPart,
   OpenAITool,
   OpenAIFunction,
   OpenAIToolCall,
@@ -21,6 +20,11 @@ export type {
 
 // Import for use in type definitions
 import type { OpenAIToolCall } from './schemas/openai.ts';
+
+// Streaming-specific tool call type that includes index
+export interface OpenAIStreamToolCall extends Partial<OpenAIToolCall> {
+  index?: number;
+}
 
 // Additional types not covered by Zod schemas
 export interface OpenAIChoice {
@@ -65,7 +69,7 @@ export interface OpenAIStreamChoice {
   delta: {
     role?: 'assistant';
     content?: string;
-    tool_calls?: Partial<OpenAIToolCall>[];
+    tool_calls?: OpenAIStreamToolCall[];
   };
   finish_reason?: 'stop' | 'length' | 'content_filter' | 'tool_calls' | null;
 }
@@ -76,6 +80,11 @@ export interface OpenAIStreamChunk {
   created: number;
   model: string;
   choices: OpenAIStreamChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 // Re-expose OpenAIContentPart shape derived from schema for convenience
