@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import type { ProxyConfig } from './config.ts';
-import type { AnthropicMessagesRequest, OpenAIChatCompletionRequest } from './schemas.ts';
+import type { AnthropicMessagesRequest } from './schemas/anthropic.ts';
+import type { OpenAIChatCompletionRequest } from './schemas/openai.ts';
 import type { OpenAIChatCompletionResponse, AnthropicMessagesResponse } from './types.ts';
 
 /**

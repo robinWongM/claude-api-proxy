@@ -149,7 +149,23 @@ export const OpenAIToolCallSchema = z.object({
 
 export const OpenAIMessageSchema = z.object({
   role: z.enum(['system', 'user', 'assistant', 'tool']),
-  content: z.string(),
+  content: z.union([
+    z.string(),
+    z.array(z.union([
+      // Text content part
+      z.object({
+        type: z.literal('text'),
+        text: z.string(),
+      }),
+      // Image URL content part (data URL or remote URL)
+      z.object({
+        type: z.literal('image_url'),
+        image_url: z.object({
+          url: z.string(),
+        }),
+      }),
+    ])),
+  ]),
   name: z.string().optional(),
   tool_calls: z.array(OpenAIToolCallSchema).optional(),
   tool_call_id: z.string().optional(),
@@ -243,6 +259,9 @@ export type OpenAIMessage = z.infer<typeof OpenAIMessageSchema>;
 export type OpenAITool = z.infer<typeof OpenAIToolSchema>;
 export type OpenAIFunction = z.infer<typeof OpenAIFunctionSchema>;
 export type OpenAIToolCall = z.infer<typeof OpenAIToolCallSchema>;
+export type OpenAIContentPart = NonNullable<
+  Extract<z.infer<typeof OpenAIMessageSchema>['content'], any[]>
+>[number];
 
 // Validation helper functions
 export function validateAnthropicMessagesRequest(data: unknown): AnthropicMessagesRequest {

@@ -1,10 +1,5 @@
 // Library exports for programmatic usage
-export { 
-  convertAnthropicToOpenAI, 
-  convertOpenAIToAnthropic,
-  convertAnthropicResponseToOpenAI,
-  convertOpenAIResponseToAnthropic,
-} from './converters/messages.ts';
+export { convertAnthropicToOpenAI, convertOpenAIToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponseToAnthropic } from './converters/messages.ts';
 
 export {
   convertAnthropicModelsToOpenAI,
@@ -15,44 +10,15 @@ export {
   getAnthropicModelName,
 } from './converters/models.ts';
 
-export {
-  createAnthropicToOpenAIStreamTransformer,
-  createOpenAIToAnthropicStreamTransformer,
-  formatSSE,
-  parseSSEData,
-} from './converters/streaming.ts';
+export { createAnthropicToOpenAIStreamTransformer, createOpenAIToAnthropicStreamTransformer, formatSSE, parseSSEData } from './converters/streaming.ts';
 
 // Export Zod schemas and validation functions
-export {
-  AnthropicMessagesRequestSchema,
-  AnthropicMessagesResponseSchema,
-  AnthropicModelsResponseSchema,
-  OpenAIChatCompletionRequestSchema,
-  validateAnthropicMessagesRequest,
-  validateOpenAIChatCompletionRequest,
-  createValidationError,
-} from './schemas.ts';
+export { AnthropicMessagesRequestSchema, AnthropicMessagesResponseSchema, AnthropicModelsResponseSchema } from './schemas/anthropic.ts';
+export { OpenAIChatCompletionRequestSchema } from './schemas/openai.ts';
+export { validateAnthropicMessagesRequest, validateOpenAIChatCompletionRequest, createValidationError } from './schemas/index.ts';
 
 // Export types (both from schemas and additional types)
-export type {
-  AnthropicMessagesRequest,
-  AnthropicMessagesResponse,
-  AnthropicModelsResponse,
-  AnthropicMessage,
-  AnthropicContentBlock,
-  AnthropicStreamEvent,
-  AnthropicError,
-  CacheControl,
-  AnthropicTool,
-  OpenAIChatCompletionRequest,
-  OpenAIChatCompletionResponse,
-  OpenAIModelsResponse,
-  OpenAIMessage,
-  OpenAIContentPart,
-  OpenAIChoice,
-  OpenAIStreamChoice,
-  OpenAIStreamChunk,
-} from './types.ts';
+export type { AnthropicMessagesRequest, AnthropicMessagesResponse, AnthropicModelsResponse, AnthropicMessage, AnthropicContentBlock, AnthropicStreamEvent, AnthropicError, CacheControl, AnthropicTool, OpenAIChatCompletionRequest, OpenAIChatCompletionResponse, OpenAIModelsResponse, OpenAIMessage, OpenAIContentPart, OpenAIChoice, OpenAIStreamChoice, OpenAIStreamChunk } from './types.ts';
 
 export { loadConfig, type ProxyConfig } from './config.ts';
 export { startServer } from './server.ts';

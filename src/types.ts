@@ -9,16 +9,18 @@ export type {
   AnthropicError,
   CacheControl,
   AnthropicTool,
+} from './schemas/index.ts';
+export type {
   OpenAIMessage,
   OpenAIChatCompletionRequest,
   OpenAIContentPart,
   OpenAITool,
   OpenAIFunction,
   OpenAIToolCall,
-} from './schemas.ts';
+} from './schemas/openai.ts';
 
 // Import for use in type definitions
-import type { OpenAIToolCall } from './schemas.ts';
+import type { OpenAIToolCall } from './schemas/openai.ts';
 
 // Additional types not covered by Zod schemas
 export interface OpenAIChoice {
@@ -75,3 +77,8 @@ export interface OpenAIStreamChunk {
   model: string;
   choices: OpenAIStreamChoice[];
 }
+
+// Re-expose OpenAIContentPart shape derived from schema for convenience
+export type OpenAIContentPart = NonNullable<
+  Extract<import('./schemas/openai.ts').OpenAIMessage['content'], any[]>
+>[number];

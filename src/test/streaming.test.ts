@@ -4,6 +4,8 @@ import {
   convertOpenAIStreamToAnthropic,
   parseSSEData,
   formatSSE,
+  createOpenAIToAnthropicStreamTransformer,
+  createAnthropicToOpenAIStreamTransformer,
 } from '../converters/streaming.ts';
 
 import type {
@@ -378,6 +380,206 @@ describe('Streaming Converter', () => {
       const parsed = parseSSEData(dataString);
 
       expect(parsed).toBeNull();
+    });
+  });
+
+  describe('Stream Transformers - Line Buffering', () => {
+    test('createOpenAIToAnthropicStreamTransformer should handle fragmented data correctly', async () => {
+      const transformer = createOpenAIToAnthropicStreamTransformer();
+      const writer = transformer.writable.getWriter();
+      const reader = transformer.readable.getReader();
+      
+      // Simulate fragmented streaming data that spans multiple chunks
+      const openaiChunk = {
+        id: 'chatcmpl-test-123',
+        object: 'chat.completion.chunk',
+        created: 1234567890,
+        model: 'gpt-3.5-turbo',
+        choices: [{
+          index: 0,
+          delta: { role: 'assistant' },
+          finish_reason: null,
+        }],
+      };
+
+      const fullLine = `data: ${JSON.stringify(openaiChunk)}\n\n`;
+      
+      // Fragment the data into multiple chunks (simulating real streaming behavior)
+      const fragment1 = fullLine.substring(0, 15); // "data: {"id":"ch"
+      const fragment2 = fullLine.substring(15, 45); // "atcmpl-test-123","object"...
+      const fragment3 = fullLine.substring(45);     // Rest of the data
+
+      // Write fragments
+      await writer.write(new TextEncoder().encode(fragment1));
+      await writer.write(new TextEncoder().encode(fragment2));
+      await writer.write(new TextEncoder().encode(fragment3));
+
+      // Add final [DONE] marker
+      await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
+      await writer.close();
+
+      // Read and verify the results
+      const results = [];
+      let done = false;
+      
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          const text = new TextDecoder().decode(value);
+          results.push(text);
+        }
+      }
+
+      // Should have received transformed Anthropic events
+      expect(results.length).toBeGreaterThan(0);
+      
+      // First result should be a message_start event
+      const firstResult = results[0];
+      expect(firstResult).toContain('message_start');
+      
+      // Last result should be the [DONE] marker
+      const lastResult = results[results.length - 1];
+      expect(lastResult).toContain('[DONE]');
+    });
+
+    test('createAnthropicToOpenAIStreamTransformer should handle fragmented data correctly', async () => {
+      const requestId = 'chatcmpl-test-456';
+      const model = 'claude-3-5-sonnet-20241022';
+      const transformer = createAnthropicToOpenAIStreamTransformer(requestId, model);
+      const writer = transformer.writable.getWriter();
+      const reader = transformer.readable.getReader();
+      
+      const anthropicEvent = {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'text_delta',
+          text: 'Hello, world!',
+        },
+      };
+
+      const fullLine = `data: ${JSON.stringify(anthropicEvent)}\n\n`;
+      
+      // Fragment the data to test line buffering
+      const fragment1 = fullLine.substring(0, 20); // "data: {"type":"cont"
+      const fragment2 = fullLine.substring(20, 50); // "ent_block_delta","i...
+      const fragment3 = fullLine.substring(50);     // Rest of the data
+
+      // Write fragments
+      await writer.write(new TextEncoder().encode(fragment1));
+      await writer.write(new TextEncoder().encode(fragment2));
+      await writer.write(new TextEncoder().encode(fragment3));
+
+      // Add final [DONE] marker
+      await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
+      await writer.close();
+
+      // Read and verify the results
+      const results = [];
+      let done = false;
+      
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          const text = new TextDecoder().decode(value);
+          results.push(text);
+        }
+      }
+
+      // Should have received transformed OpenAI chunks
+      expect(results.length).toBeGreaterThan(0);
+      
+      // Should contain the transformed content
+      const allResults = results.join('');
+      expect(allResults).toContain('Hello, world!');
+      expect(allResults).toContain('[DONE]');
+    });
+
+    test('should handle multiple complete lines in a single chunk', async () => {
+      const transformer = createOpenAIToAnthropicStreamTransformer();
+      const writer = transformer.writable.getWriter();
+      const reader = transformer.readable.getReader();
+      
+      // Create multiple complete lines in one chunk
+      const chunk1 = {
+        id: 'chatcmpl-test-1',
+        object: 'chat.completion.chunk',
+        created: 1234567890,
+        model: 'gpt-3.5-turbo',
+        choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+      };
+      
+      const chunk2 = {
+        id: 'chatcmpl-test-2', 
+        object: 'chat.completion.chunk',
+        created: 1234567891,
+        model: 'gpt-3.5-turbo',
+        choices: [{ index: 0, delta: { content: 'Hello' }, finish_reason: null }],
+      };
+
+      const multiLineChunk = `data: ${JSON.stringify(chunk1)}\n\ndata: ${JSON.stringify(chunk2)}\n\n`;
+      
+      await writer.write(new TextEncoder().encode(multiLineChunk));
+      await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
+      await writer.close();
+
+      const results = [];
+      let done = false;
+      
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          results.push(new TextDecoder().decode(value));
+        }
+      }
+
+      // Should process both chunks correctly
+      const allResults = results.join('');
+      expect(allResults).toContain('message_start');
+      expect(allResults).toContain('content_block_delta');
+      expect(allResults).toContain('Hello');
+      expect(allResults).toContain('[DONE]');
+    });
+
+    test('should handle empty lines and malformed data gracefully', async () => {
+      const transformer = createOpenAIToAnthropicStreamTransformer();
+      const writer = transformer.writable.getWriter();
+      const reader = transformer.readable.getReader();
+      
+      // Mix of valid data, empty lines, and malformed JSON
+      const mixedData = `data: {"invalid": json}\n\ndata: \n\n\ndata: ${JSON.stringify({
+        id: 'chatcmpl-test',
+        object: 'chat.completion.chunk',
+        created: 1234567890,
+        model: 'gpt-3.5-turbo',
+        choices: [{ index: 0, delta: { content: 'Valid' }, finish_reason: null }],
+      })}\n\ndata: [DONE]\n\n`;
+      
+      await writer.write(new TextEncoder().encode(mixedData));
+      await writer.close();
+
+      const results = [];
+      let done = false;
+      
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        
+        if (value) {
+          results.push(new TextDecoder().decode(value));
+        }
+      }
+
+      // Should only process the valid data and ignore malformed parts
+      const allResults = results.join('');
+      expect(allResults).toContain('Valid');
+      expect(allResults).toContain('[DONE]');
     });
   });
 });

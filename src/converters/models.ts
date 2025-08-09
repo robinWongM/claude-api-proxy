@@ -1,9 +1,5 @@
-import type {
-  AnthropicModel,
-  AnthropicModelsResponse,
-  OpenAIModel,
-  OpenAIModelsResponse,
-} from '../types.ts';
+import type { AnthropicModel, AnthropicModelsResponse } from '../schemas/index.ts';
+import type { OpenAIModel, OpenAIModelsResponse } from '../types.ts';
 
 /**
  * Maps Anthropic model names to OpenAI-compatible model names

@@ -1,8 +1,7 @@
 import type {
   AnthropicStreamEvent,
-  OpenAIStreamChunk,
-  OpenAIStreamChoice,
-} from '../types.ts';
+} from '../schemas/index.ts';
+import type { OpenAIStreamChunk, OpenAIStreamChoice } from '../types.ts';
 
 /**
  * Converts an Anthropic streaming event to OpenAI streaming format
@@ -100,8 +99,8 @@ export function convertOpenAIStreamToAnthropic(
   const events: AnthropicStreamEvent[] = [];
   const choice = chunk.choices[0];
 
-  if (isFirst && choice.delta.role) {
-    // Start of message
+  if (isFirst) {
+    // Start of message (some providers may omit role in the first delta)
     events.push({
       type: 'message_start',
       message: {
@@ -186,29 +185,65 @@ export function formatSSE(data: any): string {
  * Creates a streaming response transformer from Anthropic to OpenAI format
  */
 export function createAnthropicToOpenAIStreamTransformer(requestId: string, model: string) {
+  let buffer = ''; // Buffer to accumulate partial lines
+
   return new TransformStream({
     transform(chunk: Uint8Array, controller) {
       const text = new TextDecoder().decode(chunk);
-      const lines = text.split('\n');
+      // Add new chunk to buffer
+      buffer += text;
+      
+      // Split by lines but keep the last potentially incomplete line
+      const lines = buffer.split('\n');
+      // Keep the last line in buffer (might be incomplete)
+      buffer = lines.pop() || '';
 
+      // Process complete lines
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = line.slice(6);
+          const data = line.slice(6).trim();
           
           if (data === '[DONE]') {
             controller.enqueue(new TextEncoder().encode(formatSSE(null)));
             continue;
           }
 
-          try {
-            const event: AnthropicStreamEvent = JSON.parse(data);
-            const openaiChunk = convertAnthropicStreamToOpenAI(event, requestId, model);
-            
-            if (openaiChunk) {
-              controller.enqueue(new TextEncoder().encode(formatSSE(openaiChunk)));
+          if (data) { // Only process non-empty data
+            try {
+              const event: AnthropicStreamEvent = JSON.parse(data);
+              const openaiChunk = convertAnthropicStreamToOpenAI(event, requestId, model);
+              
+              if (openaiChunk) {
+                controller.enqueue(new TextEncoder().encode(formatSSE(openaiChunk)));
+              }
+            } catch (error) {
+              console.error('Error parsing Anthropic stream event:', error, 'Data:', data);
             }
-          } catch (error) {
-            console.error('Error parsing Anthropic stream event:', error);
+          }
+        }
+      }
+    },
+    
+    flush(controller) {
+      // Process any remaining data in buffer
+      if (buffer.trim()) {
+        const line = buffer.trim();
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          
+          if (data === '[DONE]') {
+            controller.enqueue(new TextEncoder().encode(formatSSE(null)));
+          } else if (data) {
+            try {
+              const event: AnthropicStreamEvent = JSON.parse(data);
+              const openaiChunk = convertAnthropicStreamToOpenAI(event, requestId, model);
+              
+              if (openaiChunk) {
+                controller.enqueue(new TextEncoder().encode(formatSSE(openaiChunk)));
+              }
+            } catch (error) {
+              console.error('Error parsing final Anthropic stream event:', error);
+            }
           }
         }
       }
@@ -220,51 +255,94 @@ export function createAnthropicToOpenAIStreamTransformer(requestId: string, mode
  * Creates a streaming response transformer from OpenAI to Anthropic format
  */
 export function createOpenAIToAnthropicStreamTransformer() {
-  let isFirst = true;
+  let started = false;
+  let sentStop = false;
   let chunkCount = 0;
+  let buffer = ''; // Buffer to accumulate partial lines
 
   return new TransformStream({
     transform(chunk: Uint8Array, controller) {
       const text = new TextDecoder().decode(chunk);
-      const lines = text.split('\n');
-
+      // Add new chunk to buffer
+      buffer += text;
+      
+      // Split by lines but keep the last potentially incomplete line
+      const lines = buffer.split('\n');
+      // Keep the last line in buffer (might be incomplete)
+      buffer = lines.pop() || '';
+      
+      // Process complete lines
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          const data = line.slice(6);
+          const data = line.slice(6).trim();
           
           if (data === '[DONE]') {
-            // Send final events
-            const events = convertOpenAIStreamToAnthropic(
-              {} as OpenAIStreamChunk, // Empty chunk for final events
-              false,
-              true
-            );
-            
-            for (const event of events) {
-              controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+            // Send final stop events if not already sent
+            if (started && !sentStop) {
+              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'content_block_stop', index: 0 })));
+              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'message_stop' })));
+              sentStop = true;
             }
-            
+
             controller.enqueue(new TextEncoder().encode(formatSSE(null)));
             continue;
           }
 
-          try {
-            const openaiChunk: OpenAIStreamChunk = JSON.parse(data);
-            chunkCount++;
-            
-            const events = convertOpenAIStreamToAnthropic(
-              openaiChunk,
-              isFirst,
-              false
-            );
-            
-            for (const event of events) {
-              controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+          if (data) { // Only process non-empty data
+            try {
+              const openaiChunk: OpenAIStreamChunk = JSON.parse(data);
+              chunkCount++;
+              
+              const events = convertOpenAIStreamToAnthropic(
+                openaiChunk,
+                !started,
+                false
+              );
+              
+              for (const event of events) {
+                controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+                if (event.type === 'message_start') started = true;
+                if (event.type === 'message_stop') sentStop = true;
+              }
+            } catch (error) {
+              console.error('Error parsing OpenAI stream chunk:', error, 'Data:', data);
             }
-            
-            isFirst = false;
-          } catch (error) {
-            console.error('Error parsing OpenAI stream chunk:', error);
+          }
+        }
+      }
+    },
+    
+    flush(controller) {
+      // Process any remaining data in buffer
+      if (buffer.trim()) {
+        const line = buffer.trim();
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          
+          if (data === '[DONE]') {
+            if (started && !sentStop) {
+              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'content_block_stop', index: 0 })));
+              controller.enqueue(new TextEncoder().encode(formatSSE({ type: 'message_stop' })));
+              sentStop = true;
+            }
+            controller.enqueue(new TextEncoder().encode(formatSSE(null)));
+          } else if (data) {
+            try {
+              const openaiChunk: OpenAIStreamChunk = JSON.parse(data);
+              const events = convertOpenAIStreamToAnthropic(
+                openaiChunk,
+                !started && chunkCount === 0,
+                true
+              );
+              
+              for (const event of events) {
+                controller.enqueue(new TextEncoder().encode(formatSSE(event)));
+                if (event.type === 'message_start') started = true;
+                if (event.type === 'message_stop') sentStop = true;
+              }
+            } catch (error) {
+              console.error('Error parsing final OpenAI stream chunk:', error);
+            }
           }
         }
       }
