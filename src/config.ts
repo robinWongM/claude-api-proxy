@@ -7,6 +7,8 @@ export interface ProxyConfig {
   targetBaseUrl: string;
   /** API key for the target OpenAI-compatible API */
   targetApiKey?: string;
+  /** Target model for the target OpenAI-compatible API */
+  targetModel: string;
   /** Enable request/response logging */
   enableLogging: boolean;
   /** Enable CORS */
@@ -27,6 +29,7 @@ export const defaultConfig: ProxyConfig = {
   host: process.env.HOST || '0.0.0.0',
   targetBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com',
   targetApiKey: process.env.OPENAI_API_KEY,
+  targetModel: process.env.OPENAI_MODEL || 'moonshotai/kimi-k2:free',
   enableLogging: process.env.ENABLE_LOGGING === 'true',
   enableCors: process.env.ENABLE_CORS !== 'false', // Default to true
   customHeaders: process.env.CUSTOM_HEADERS ? JSON.parse(process.env.CUSTOM_HEADERS) : undefined,

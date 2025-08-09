@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { ProxyConfig } from '../../config.ts';
-import { convertAnthropicToOpenAI, convertOpenAIResponseToAnthropic } from '../../converters/messages.ts';
-import { createOpenAIToAnthropicStreamTransformer } from '../../converters/streaming.ts';
+import { convertAnthropicToOpenAI, convertOpenAIResponseToAnthropic } from '../../converters/messages';
+import { createOpenAIToAnthropicStreamTransformer } from '../../converters/streaming';
 import type { OpenAIChatCompletionResponse } from '../../types.ts';
-import { validateAnthropicMessagesRequest, createValidationError, type AnthropicMessagesRequest, type AnthropicMessagesResponse, type AnthropicError, type OpenAIChatCompletionRequest } from '../../schemas.ts';
+import { validateAnthropicMessagesRequest, createValidationError, type AnthropicMessagesRequest, type AnthropicMessagesResponse, type AnthropicError, type OpenAIChatCompletionRequest } from '../../schemas/index.ts';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -31,7 +31,7 @@ function buildTargetHeaders(request: Request, config: ProxyConfig, anthropicRequ
   return headers;
 }
 
-export async function handleMessagesProxy(request: Request, config: ProxyConfig): Promise<Response> {
+export async function handleMessagesProxy(request: Request, config: ProxyConfig, requestId?: string): Promise<Response> {
   let debugRequestId: string | null = null;
 
   try {
@@ -52,12 +52,11 @@ export async function handleMessagesProxy(request: Request, config: ProxyConfig)
     const openaiRequest: OpenAIChatCompletionRequest = convertAnthropicToOpenAI(anthropicRequest);
     
     // OpenAI debug: assign request id and dump request
-    const ensureDir = async () => { if (config.enableDebug) await mkdir(config.debugDir, { recursive: true }).catch(() => {}); };
-    const genId = () => new Date().toISOString().replace(/[:.]/g, '-') + '-' + Math.random().toString(36).slice(2, 10);
-    debugRequestId = config.enableDebug ? genId() : null;
-    if (config.enableDebug && debugRequestId) {
-      await ensureDir();
-      await writeFile(join(config.debugDir, `openai-request-${debugRequestId}.json`), JSON.stringify(openaiRequest, null, 2));
+    const ensureDir = async (dir?: string) => { const d = dir ?? config.debugDir; if (config.enableDebug) await mkdir(d, { recursive: true }).catch(() => {}); };
+    if (config.enableDebug && requestId) {
+      const dir = join(config.debugDir, requestId);
+      await ensureDir(dir);
+      await writeFile(join(dir, `openai-request.json`), JSON.stringify(openaiRequest, null, 2));
     }
 
     const targetUrl = `${config.targetBaseUrl}/v1/chat/completions`;
@@ -71,7 +70,7 @@ export async function handleMessagesProxy(request: Request, config: ProxyConfig)
       const transformer = createOpenAIToAnthropicStreamTransformer();
       const anthropicStream = forTransform.pipeThrough(transformer);
 
-      if (config.enableDebug && debugRequestId) {
+      if (config.enableDebug && requestId) {
         const decoder = new TextDecoder();
         let collected = '';
         (async () => {
@@ -83,8 +82,9 @@ export async function handleMessagesProxy(request: Request, config: ProxyConfig)
               if (value) collected += decoder.decode(value);
             }
           } finally {
-            await ensureDir();
-            await writeFile(join(config.debugDir, `openai-stream-${debugRequestId}.sse.txt`), collected).catch(() => {});
+            const dir = join(config.debugDir, requestId);
+            await ensureDir(dir);
+            await writeFile(join(dir, `openai-stream.txt`), collected).catch(() => {});
           }
         })();
       }
@@ -100,8 +100,9 @@ export async function handleMessagesProxy(request: Request, config: ProxyConfig)
 
     const openaiResponse = await targetResponse.json() as OpenAIChatCompletionResponse;
     if (config.enableDebug && debugRequestId) {
-      await ensureDir();
-      await writeFile(join(config.debugDir, `openai-response-${debugRequestId}.json`), JSON.stringify(openaiResponse, null, 2));
+      const dir = join(config.debugDir, debugRequestId);
+      await ensureDir(dir);
+      await writeFile(join(dir, `openai-response.json`), JSON.stringify(openaiResponse, null, 2));
     }
 
     const anthropicResponse: AnthropicMessagesResponse = convertOpenAIResponseToAnthropic(openaiResponse);
@@ -109,8 +110,9 @@ export async function handleMessagesProxy(request: Request, config: ProxyConfig)
     return new Response(JSON.stringify(anthropicResponse), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (error) {
     if (config.enableDebug && debugRequestId) {
-      await mkdir(config.debugDir, { recursive: true }).catch(() => {});
-      await writeFile(join(config.debugDir, `error-${debugRequestId}.json`), JSON.stringify({ context: 'messages_proxy_error', error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error) }, null, 2)).catch(() => {});
+      const dir = join(config.debugDir, debugRequestId);
+      await mkdir(dir, { recursive: true }).catch(() => {});
+      await writeFile(join(dir, `error.json`), JSON.stringify({ context: 'messages_proxy_error', error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error) }, null, 2)).catch(() => {});
     }
     const errorResponse: AnthropicError = { type: 'error', error: { type: 'api_error', message: error instanceof Error ? error.message : 'Internal server error' } };
     return new Response(JSON.stringify(errorResponse), { status: 500, headers: { 'Content-Type': 'application/json' } });

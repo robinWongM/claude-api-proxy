@@ -1,5 +1,5 @@
-import { openAIToAnthropic as convertOpenAIRequest, anthropicToOpenAI as convertAnthropicRequest } from './messages/requests.ts';
-import { anthropicToOpenAI as convertAnthropicResp, openAIToAnthropic as convertOpenAIResp } from './messages/responses.ts';
+import { openAIToAnthropic as convertOpenAIRequest, anthropicToOpenAI as convertAnthropicRequest } from './requests.ts';
+import { anthropicToOpenAI as convertAnthropicResp, openAIToAnthropic as convertOpenAIResp } from './responses.ts';
 
 // moved to ./messages/{content,requests}.ts
 

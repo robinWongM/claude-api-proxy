@@ -3,6 +3,7 @@ import type { OpenAIMessage, OpenAIChatCompletionRequest, OpenAITool } from '../
 import type { OpenAIContentPart } from '../../types.ts';
 import type { AnthropicContentBlock } from '../../schemas/index.ts';
 import { convertAnthropicContentToOpenAI, convertOpenAIContentToAnthropic } from './content.ts';
+import { loadConfig } from '../../config.ts';
 
 function convertAnthropicToolsToOpenAI(anthropicTools: AnthropicTool[]): OpenAITool[] {
   return anthropicTools.map(tool => ({ type: 'function' as const, function: { name: tool.name, description: tool.description, parameters: tool.input_schema } }));
@@ -71,7 +72,7 @@ export function anthropicToOpenAI(anthropicRequest: AnthropicMessagesRequest): O
     }
   }
 
-  const openaiRequest: OpenAIChatCompletionRequest = { model: anthropicRequest.model, messages };
+  const openaiRequest: OpenAIChatCompletionRequest = { model: loadConfig().targetModel, messages };
   if (anthropicRequest.max_tokens) openaiRequest.max_tokens = Math.min(anthropicRequest.max_tokens, 8192);
   if (anthropicRequest.temperature !== undefined) openaiRequest.temperature = anthropicRequest.temperature;
   if (anthropicRequest.top_p !== undefined) openaiRequest.top_p = anthropicRequest.top_p;

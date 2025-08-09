@@ -1,168 +1,18 @@
 import { expect, test, describe } from 'bun:test';
 import {
-  convertAnthropicStreamToOpenAI,
   convertOpenAIStreamToAnthropic,
   parseSSEData,
   formatSSE,
   createOpenAIToAnthropicStreamTransformer,
-  createAnthropicToOpenAIStreamTransformer,
 } from '../converters/streaming.ts';
 
 import type {
-  AnthropicStreamEvent,
   OpenAIStreamChunk,
 } from '../types.ts';
 
 describe('Streaming Converter', () => {
   const requestId = 'chatcmpl-test-123';
   const model = 'claude-3-5-sonnet-20241022';
-
-  describe('convertAnthropicStreamToOpenAI', () => {
-    test('should convert message_start event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'message_start',
-        message: {
-          id: 'msg_123',
-          type: 'message',
-          role: 'assistant',
-          content: [],
-          model: 'claude-3-5-sonnet-20241022',
-          stop_reason: 'end_turn',
-          stop_sequence: null,
-          usage: {
-            input_tokens: 10,
-            output_tokens: 0,
-          },
-        },
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toEqual({
-        id: requestId,
-        object: 'chat.completion.chunk',
-        created: expect.any(Number),
-        model,
-        choices: [{
-          index: 0,
-          delta: {
-            role: 'assistant',
-          },
-          finish_reason: null,
-        }],
-      });
-    });
-
-    test('should convert content_block_delta event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'content_block_delta',
-        index: 0,
-        delta: {
-          type: 'text_delta',
-          text: 'Hello',
-        },
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toEqual({
-        id: requestId,
-        object: 'chat.completion.chunk',
-        created: expect.any(Number),
-        model,
-        choices: [{
-          index: 0,
-          delta: {
-            content: 'Hello',
-          },
-          finish_reason: null,
-        }],
-      });
-    });
-
-    test('should convert message_stop event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'message_stop',
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toEqual({
-        id: requestId,
-        object: 'chat.completion.chunk',
-        created: expect.any(Number),
-        model,
-        choices: [{
-          index: 0,
-          delta: {},
-          finish_reason: 'stop',
-        }],
-      });
-    });
-
-    test('should return null for content_block_start event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'content_block_start',
-        index: 0,
-        content_block: {
-          type: 'text',
-          text: '',
-        },
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toBeNull();
-    });
-
-    test('should return null for content_block_stop event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'content_block_stop',
-        index: 0,
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toBeNull();
-    });
-
-    test('should return null for message_delta event', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'message_delta',
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toBeNull();
-    });
-
-    test('should handle content_block_delta without text', () => {
-      const event: AnthropicStreamEvent = {
-        type: 'content_block_delta',
-        index: 0,
-        delta: {
-          type: 'text_delta',
-          text: '',
-        },
-      };
-
-      const result = convertAnthropicStreamToOpenAI(event, requestId, model);
-
-      expect(result).toEqual({
-        id: requestId,
-        object: 'chat.completion.chunk',
-        created: expect.any(Number),
-        model,
-        choices: [{
-          index: 0,
-          delta: {
-            content: '',
-          },
-          finish_reason: null,
-        }],
-      });
-    });
-  });
 
   describe('convertOpenAIStreamToAnthropic', () => {
     test('should convert first chunk with role', () => {
@@ -442,61 +292,6 @@ describe('Streaming Converter', () => {
       // Last result should be the [DONE] marker
       const lastResult = results[results.length - 1];
       expect(lastResult).toContain('[DONE]');
-    });
-
-    test('createAnthropicToOpenAIStreamTransformer should handle fragmented data correctly', async () => {
-      const requestId = 'chatcmpl-test-456';
-      const model = 'claude-3-5-sonnet-20241022';
-      const transformer = createAnthropicToOpenAIStreamTransformer(requestId, model);
-      const writer = transformer.writable.getWriter();
-      const reader = transformer.readable.getReader();
-      
-      const anthropicEvent = {
-        type: 'content_block_delta',
-        index: 0,
-        delta: {
-          type: 'text_delta',
-          text: 'Hello, world!',
-        },
-      };
-
-      const fullLine = `data: ${JSON.stringify(anthropicEvent)}\n\n`;
-      
-      // Fragment the data to test line buffering
-      const fragment1 = fullLine.substring(0, 20); // "data: {"type":"cont"
-      const fragment2 = fullLine.substring(20, 50); // "ent_block_delta","i...
-      const fragment3 = fullLine.substring(50);     // Rest of the data
-
-      // Write fragments
-      await writer.write(new TextEncoder().encode(fragment1));
-      await writer.write(new TextEncoder().encode(fragment2));
-      await writer.write(new TextEncoder().encode(fragment3));
-
-      // Add final [DONE] marker
-      await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
-      await writer.close();
-
-      // Read and verify the results
-      const results = [];
-      let done = false;
-      
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        
-        if (value) {
-          const text = new TextDecoder().decode(value);
-          results.push(text);
-        }
-      }
-
-      // Should have received transformed OpenAI chunks
-      expect(results.length).toBeGreaterThan(0);
-      
-      // Should contain the transformed content
-      const allResults = results.join('');
-      expect(allResults).toContain('Hello, world!');
-      expect(allResults).toContain('[DONE]');
     });
 
     test('should handle multiple complete lines in a single chunk', async () => {

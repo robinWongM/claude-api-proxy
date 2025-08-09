@@ -4,7 +4,7 @@ import {
   convertOpenAIToAnthropic,
   convertAnthropicResponseToOpenAI,
   convertOpenAIResponseToAnthropic,
-} from '../converters/messages.ts';
+} from '../converters/messages/index.ts';
 
 import type {
   AnthropicMessagesRequest,

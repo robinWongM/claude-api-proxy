@@ -8,8 +8,9 @@ export function handleMessagesRoute() {
 
   r.post('/', async (c) => {
     const config = c.get('config');
+    const reqId = c.get('requestId');
     // Delegate to handler; if it returns SSE, just return as-is.
-    const resp = await handleMessagesProxy(c.req.raw, config);
+    const resp = await handleMessagesProxy(c.req.raw, config, reqId);
     const isSSE = (resp.headers.get('Content-Type') || '').includes('text/event-stream');
     if (!isSSE) return resp;
 

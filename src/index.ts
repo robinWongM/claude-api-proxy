@@ -1,5 +1,5 @@
 // Library exports for programmatic usage
-export { convertAnthropicToOpenAI, convertOpenAIToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponseToAnthropic } from './converters/messages.ts';
+export { convertAnthropicToOpenAI, convertOpenAIToAnthropic, convertAnthropicResponseToOpenAI, convertOpenAIResponseToAnthropic } from './converters/messages/index.ts';
 
 export {
   convertAnthropicModelsToOpenAI,
@@ -29,7 +29,7 @@ import {
   convertOpenAIToAnthropic,
   convertAnthropicResponseToOpenAI,
   convertOpenAIResponseToAnthropic,
-} from './converters/messages.ts';
+} from './converters/messages/index.ts';
 
 import {
   convertAnthropicModelsToOpenAI,
