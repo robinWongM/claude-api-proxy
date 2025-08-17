@@ -17,6 +17,7 @@ describe("E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)", () => 
 			host: "127.0.0.1",
 			targetBaseUrl: process.env.OPENAI_BASE_URL || "http://127.0.0.1:11434",
 			targetApiKey: process.env.OPENAI_API_KEY || "ollama",
+			targetModel: "qwen3-coder-30b",
 			enableLogging: false,
 			enableCors: true,
 			enableDebug: true,
@@ -47,7 +48,13 @@ describe("E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)", () => 
 		const res = await client.messages.create({
 			model: "qwen3:8b",
 			max_tokens: 64,
-			messages: [{ role: "user", content: "Say hello in one word." }],
+			messages: [
+				{
+					role: "user",
+					content:
+						"output single word: `hello`. no other text. no capitalization.",
+				},
+			],
 		} as any);
 
 		expect(res).toBeDefined();
@@ -74,6 +81,7 @@ describe("E2E: Anthropic SDK client via proxy to Ollama (OpenAI compat)", () => 
 
 		let sawDelta = false;
 		for await (const event of stream) {
+			console.log(event);
 			if (event?.type === "content_block_delta" && (event as any).delta?.text) {
 				sawDelta = true;
 			}
