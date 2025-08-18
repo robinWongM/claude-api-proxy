@@ -15,6 +15,7 @@ async function main() {
 		hostname: config.host,
 		port: config.port,
 		fetch: (req) => app.fetch(req),
+		idleTimeout: 0,
 	});
 
 	process.on("SIGINT", () => {

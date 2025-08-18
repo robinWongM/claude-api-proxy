@@ -1,8 +1,8 @@
-import type { GenerateResult } from "ai";
+import type { LanguageModelV2 } from "@ai-sdk/provider";
 import type { AnthropicMessagesResponse } from "../../schemas/anthropic";
 
 export function transformToAnthropicResponse(
-	aiSdkResponse: GenerateResult,
+	aiSdkResponse: Awaited<ReturnType<LanguageModelV2['doGenerate']>>,
 	model: string,
 ): AnthropicMessagesResponse {
 	const content = aiSdkResponse.content.map((block) => {

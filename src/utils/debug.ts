@@ -9,6 +9,63 @@ export interface DebugContext {
 	config: ProxyConfig;
 }
 
+function checkDebugEnabled(config: ProxyConfig): boolean {
+	return config.enableDebug;
+}
+
+async function getDebugFilePath(
+	requestId: string,
+	config: ProxyConfig,
+	fileName: string,
+): Promise<string> {
+	const debugDir = await createDebugDirectory(requestId, config);
+	return join(debugDir, fileName);
+}
+
+async function safeWriteFile(
+	filePath: string,
+	content: string | (() => Promise<string>),
+	errorContext: string,
+): Promise<void> {
+	try {
+		const fileContent = typeof content === 'string' ? content : await content();
+		await writeFile(filePath, fileContent);
+	} catch (error) {
+		console.error(`Failed to ${errorContext} to: ${filePath}`, error);
+	}
+}
+
+function createStreamTransform(
+	filePath: string,
+	chunkProcessor: (chunk: unknown) => string | Promise<string>,
+): TransformStream {
+	const fileHandle = createWriteStream(filePath);
+
+	const transformStream = new TransformStream({
+		async transform(chunk, controller) {
+			const processedChunk = await chunkProcessor(chunk);
+			fileHandle.write(processedChunk);
+			controller.enqueue(chunk);
+		},
+		async flush() {
+			fileHandle.end();
+		},
+	});
+
+	return transformStream;
+}
+
+function createClonedResponse(
+	originalResponse: Response,
+	transformedStream: TransformStream,
+): Response {
+	return new Response(originalResponse.body?.pipeThrough(transformedStream), {
+		status: originalResponse.status,
+		statusText: originalResponse.statusText,
+		headers: originalResponse.headers,
+	});
+}
+
 export async function createDebugDirectory(
 	requestId: string,
 	config: ProxyConfig,
@@ -30,16 +87,10 @@ export async function dumpRequest(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<void> {
-	if (!config.enableDebug) return;
+	if (!checkDebugEnabled(config)) return;
 
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "request.json");
-
-	try {
-		await writeFile(filePath, JSON.stringify(request, null, 2));
-	} catch (error) {
-		console.error(`Failed to dump request to: ${filePath}`, error);
-	}
+	const filePath = await getDebugFilePath(requestId, config, "request.json");
+	await safeWriteFile(filePath, JSON.stringify(request, null, 2), "dump request");
 }
 
 export async function dumpAiSdkCallOptions(
@@ -47,16 +98,10 @@ export async function dumpAiSdkCallOptions(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<void> {
-	if (!config.enableDebug) return;
+	if (!checkDebugEnabled(config)) return;
 
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "ai-sdk-call-options.json");
-
-	try {
-		await writeFile(filePath, JSON.stringify(callOptions, null, 2));
-	} catch (error) {
-		console.error(`Failed to dump callOptions to: ${filePath}`, error);
-	}
+	const filePath = await getDebugFilePath(requestId, config, "ai-sdk-call-options.json");
+	await safeWriteFile(filePath, JSON.stringify(callOptions, null, 2), "dump callOptions");
 }
 
 export async function dumpProviderRequest(
@@ -64,16 +109,10 @@ export async function dumpProviderRequest(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<void> {
-	if (!config.enableDebug) return;
+	if (!checkDebugEnabled(config)) return;
 
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "provider-request.json");
-
-	try {
-		await writeFile(filePath, await request.clone().text());
-	} catch (error) {
-		console.error(`Failed to dump provider request to: ${filePath}`, error);
-	}
+	const filePath = await getDebugFilePath(requestId, config, "provider-request.json");
+	await safeWriteFile(filePath, () => request.clone().text(), "dump provider request");
 }
 
 export async function dumpProviderResponse(
@@ -81,38 +120,17 @@ export async function dumpProviderResponse(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<Response> {
-	if (!config.enableDebug) return response;
+	if (!checkDebugEnabled(config)) return response;
+	if (!response.body) return response;
 
-	if (!response.body) {
-		return response;
-	}
-
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "provider-response.txt");
-	const stream = response.body;
+	const filePath = await getDebugFilePath(requestId, config, "provider-response.txt");
 
 	try {
-		// Create a file writer stream
-		const fileHandle = createWriteStream(filePath);
-
-		// Clone the stream by creating a transform stream
-		const transformStream = new TransformStream({
-			async transform(chunk, controller) {
-				fileHandle.write(chunk);
-				// Forward chunk to original consumer
-				controller.enqueue(chunk);
-			},
-			async flush() {
-				fileHandle.end();
-			},
-		});
-
-		// Return the cloned stream
-		return new Response(stream.pipeThrough(transformStream), {
-			status: response.status,
-			statusText: response.statusText,
-			headers: response.headers,
-		});
+		const transformStream = createStreamTransform(
+			filePath,
+			(chunk) => chunk,
+		);
+		return createClonedResponse(response, transformStream);
 	} catch (error) {
 		console.error(`Failed to setup stream dumping to: ${filePath}`, error);
 		return response;
@@ -124,28 +142,15 @@ export async function dumpAiSdkStreamPart(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<ReadableStream> {
-	if (!config.enableDebug) return stream;
+	if (!checkDebugEnabled(config)) return stream;
 
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "ai-sdk-stream-part.txt");
+	const filePath = await getDebugFilePath(requestId, config, "ai-sdk-stream-part.txt");
 
 	try {
-		// Create a file writer stream
-		const fileHandle = createWriteStream(filePath);
-
-		// Clone the stream by creating a transform stream
-		const transformStream = new TransformStream({
-			async transform(chunk, controller) {
-				fileHandle.write(`${JSON.stringify(chunk)}\n`);
-				// Forward chunk to original consumer
-				controller.enqueue(chunk);
-			},
-			async flush() {
-				fileHandle.end();
-			},
-		});
-
-		// Return the cloned stream
+		const transformStream = createStreamTransform(
+			filePath,
+			(chunk) => `${JSON.stringify(chunk)}\n`,
+		);
 		return stream.pipeThrough(transformStream);
 	} catch (error) {
 		console.error(`Failed to setup stream dumping to: ${filePath}`, error);
@@ -158,38 +163,17 @@ export async function dumpResponse(
 	requestId: string,
 	config: ProxyConfig,
 ): Promise<Response> {
-	if (!config.enableDebug) return response;
+	if (!checkDebugEnabled(config)) return response;
+	if (!response.body) return response;
 
-	if (!response.body) {
-		return response;
-	}
-
-	const debugDir = await createDebugDirectory(requestId, config);
-	const filePath = join(debugDir, "response.txt");
-	const stream = response.body;
+	const filePath = await getDebugFilePath(requestId, config, "response.txt");
 
 	try {
-		// Create a file writer stream
-		const fileHandle = await open(filePath, "w");
-
-		// Clone the stream by creating a transform stream
-		const transformStream = new TransformStream({
-			async transform(chunk, controller) {
-				await fileHandle.write(chunk);
-				// Forward chunk to original consumer
-				controller.enqueue(chunk);
-			},
-			async flush() {
-				await fileHandle.close();
-			},
-		});
-
-		// Return the cloned stream
-		return new Response(stream.pipeThrough(transformStream), {
-			status: response.status,
-			statusText: response.statusText,
-			headers: response.headers,
-		});
+		const transformStream = createStreamTransform(
+			filePath,
+			(chunk) => chunk,
+		);
+		return createClonedResponse(response, transformStream);
 	} catch (error) {
 		console.error(`Failed to setup stream dumping to: ${filePath}`, error);
 		return response;
