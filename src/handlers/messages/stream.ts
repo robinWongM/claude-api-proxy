@@ -319,7 +319,11 @@ export function handleStream(
 										stop_reason:
 											value.finishReason === "stop"
 												? "end_turn"
-												: value.finishReason,
+												: value.finishReason === "length"
+													? "max_tokens"
+													: value.finishReason === "tool-calls"
+														? "tool_use"
+														: value.finishReason,
 										stop_sequence: null,
 									},
 									usage: {

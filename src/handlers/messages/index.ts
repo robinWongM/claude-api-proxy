@@ -20,8 +20,12 @@ export async function handleMessagesProxy(
 	if (!requestId) {
 		throw new Error("Request ID is required");
 	}
-
 	const callOptions = anthropicRequestToCallOptions(request);
+
+	// GLM
+	callOptions.temperature = 0.6;
+	callOptions.topP = 1;
+
 	await dumpAiSdkCallOptions(callOptions, requestId, config);
 
 	const provider = createOpenAICompatible({
